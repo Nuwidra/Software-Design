@@ -1,0 +1,185 @@
+@startuml
+
+title Tokenizer (current)
+
+package fulltextsearch {
+
+    class IndexLocation {
+        +get():Optional<File>
+    }
+
+    package index {
+
+        interface Index {
+            + index(String term, File):void
+            + search(String term):Set<File>
+        }
+
+        interface PersistentIndex {
+            + persist():void
+            + restore():boolean
+        }
+
+        Index <|-- PersistentIndex
+
+        PersistentIndex <|.. TrieIndex
+
+        class TrieIndex {
+            - indexFile:File
+            + TrieIndex(:File, :Trie<File>)
+        }
+    }
+
+    package indexer {
+
+        interface Indexer {
+            index(reporter:Consumer<File>):void
+        }
+
+        class DefaultIndexer {
+            + DefaultIndexer(:FileSource,:FileTokenizerFactory,:PersistentIndex)
+        }
+
+        Indexer <|.. DefaultIndexer
+
+        class IndexerCmd {
+            - startingDirectory: File
+            - indexLocation: File
+            + {static} main(:String[]):void
+            + IndexerCmd(startingDirectory:File,indexLocation:File)
+            + execute():void
+        }
+
+        Indexer <.. IndexerCmd
+        IndexLocation <.. IndexerCmd
+
+        package tokenizer {
+
+            interface FileTokenizerFactory {
+                fileTokenizer(:File): Optional<FileTokenizer>
+            }
+
+            interface FileTokenizer {
+                hasNext(): boolean
+                next(): String
+            }
+
+            class DefaultFileTokenizerFactory {
+                - factories: Map<String, FileTokenizerFactory>
+                + DefaultFileTokenizerFactory(Map<String, FileTokenizerFactory>)
+            }
+
+            FileTokenizerFactory <|.. DefaultFileTokenizerFactory
+
+            class TxtFileTokenizer {
+                - scanner: Scanner
+                + TxtFileTokenizer(:File)
+            }
+
+            FileTokenizer <|.. TxtFileTokenizer
+
+            class PdfFileTokenizer {
+                - scanner: Scanner
+                + PdfFileTokenizer(:File)
+            }
+
+            FileTokenizer <|.. PdfFileTokenizer
+
+            FileTokenizer <.. DefaultFileTokenizerFactory
+
+            class PdfFileTokenizerFactory {
+            }
+
+            class TxtFileTokenizerFactory {
+            }
+
+            FileTokenizerFactory <|.. PdfFileTokenizerFactory
+            FileTokenizerFactory <|.. TxtFileTokenizerFactory
+            FileTokenizerFactory o.. DefaultFileTokenizerFactory :factories
+
+        }
+
+        package source {
+            interface FileSource {
+                hasNext(): boolean,
+                next(): File
+            }
+
+            class DirectoryFileSource {
+                + DirectoryFileSource(directory: File)
+            }
+
+            FileSource <|.. DirectoryFileSource
+        }
+
+        DefaultIndexer --> FileSource
+        DefaultIndexer --> FileTokenizerFactory
+        DefaultIndexer ..> FileTokenizer
+        DefaultIndexer --> PersistentIndex
+
+        class IndexerComponentFactory {
+            + indexer(directory: File, :FileSource,:FileTokenizerFactory,:PersistentIndex): Indexer
+            - fileSource(directory: File)
+            - fileTokenizerFactory(:Map<String, FileTokenizerFactory>)
+            - persistentIndex(): PersistentIndex
+            - trie(): Trie
+        }
+
+        IndexerCmd ..> IndexerComponentFactory
+    }
+
+    package searcher {
+        interface Searcher {
+            search(terms:Set<String>):Set<File>
+        }
+
+        class DefaultSearcher {
+            + DefaultSearcher(:PersistentIndex)
+        }
+
+        class SearcherCmd {
+            - terms: Set<String>
+            - indexLocation: File
+            + {static} main(String[]): void
+            + SearcherCmd(:Set<String>, :File)
+            + execute():void
+        }
+
+        Searcher <|.. DefaultSearcher
+        Searcher <.. SearcherCmd
+        PersistentIndex <.. DefaultSearcher
+        IndexLocation <.. SearcherCmd
+
+        class SearcherComponentFactory {
+            + searcher(:PersistentIndex): Searcher
+            - persistentIndex(): PersistentIndex
+            - trie(): Trie
+        }
+
+        SearcherCmd ..> SearcherComponentFactory
+    }
+
+    package trie {
+
+        interface Trie<V> {
+            + insert(String key, V value):void
+            + find(String key):Set<V>
+        }
+
+        class HashTrie<V> {
+            - root:TrieNode
+        }
+
+        class TrieNode {
+            - children:Map<Character, TrieNode>
+            - bucket:Set<V>
+        }
+
+        Trie<|..HashTrie
+        HashTrie+--TrieNode
+        TrieIndex "index" --> Trie :<<bind>>\nV:File
+    }
+}
+
+
+@enduml

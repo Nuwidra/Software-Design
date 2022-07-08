@@ -1,0 +1,21 @@
+@startuml
+
+title Trie Insert
+
+start
+:current = root;
+
+:for each c in key;
+repeat
+    :next = current.children.get(c);
+    if (next == null) then (yes)
+        :next = new TrieNode();
+        :current.children.put(c, next);
+        :current = next;
+    else (no)
+        :current = next;
+    endif
+repeatwhile
+:current.bucket.add(value);
+stop
+@enduml
