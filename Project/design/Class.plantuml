@@ -1,0 +1,249 @@
+@startuml
+skinparam linetype ortho
+
+package edu.byohttp {
+
+    class ByoHttp {
+        - port: int
+        - resourcesDirectory: File
+        + {static} main(String[])
+        + ByoHttp(port: int, resourcesDirectory: File, mimeTypesMapping: File)
+        + run()
+    }
+
+    class ControllerComponentFactory {
+        + {static} controller(mimeTypesMapping: File, resourcesDirectory: File): Controller
+        - {static} parser(): RequestParser
+        - {static} httpMethods(mimeTypesMapping: File, resourcesDirectory File): Map<String, HTTPMethod>
+        - {static} resourceSearcher(mimeTypesMapping: File, resourcesDirectory File): ResourceSearcher
+        - {static} resourceFactory(): ResourceFactory
+    }
+
+    class SocketMessageRunnable {
+        - in: InputStream
+        - out: OutputStream
+        - controller: Controller
+        + SocketMessageRunnable(Socket, controller: Controller)
+        + run()
+        - readInputStreamMessage(): String
+        - writeOutputStream(response: Response): void
+    }
+
+    ByoHttp .right.> SocketMessageRunnable
+    ByoHttp ..> ControllerComponentFactory
+
+    package controller {
+
+        interface Controller {
+            + processInputMessage(message: String): Response
+        }
+
+        class DefaultController {
+            - httpMethods: Map<String, HTTPMethod>
+            + DefaultController(parser: RequestParser,  httpMethods: Map<String, HTTPMethod>)
+        }
+
+        ControllerComponentFactory ..> DefaultController
+        Controller <|... DefaultController
+        SocketMessageRunnable --> Controller
+
+    }
+
+    package parser {
+        interface RequestParser {
+            + buildRequest(message: String): Optional<Request>
+
+
+        }
+
+        class DefaultRequestParser {
+            + DefaultRequestParser()
+            - generateHeaders(headers: String): Map<String, String>
+        }
+
+        DefaultRequestParser .up.|> RequestParser
+        ControllerComponentFactory .left.> DefaultRequestParser
+        DefaultController -left-> RequestParser
+    }
+
+    package request {
+        interface Request {
+            + getMethod(): String
+            + getResource(): String
+            + getProtocolVersion(): String
+            + getHeaderValue(headerKey: String): String
+            + toString(): String
+        }
+
+        class DefaultRequest {
+            - method: String
+            - resource: String
+            - protocolVersion: String
+            - headers: Map<String, String>
+            + DefaultRequest(method: String, resource: String, protocolVersion: String, headers: Map<String, String>)
+        }
+
+        Request <|.. DefaultRequest
+        DefaultController .left.> Request
+        DefaultRequestParser ..> Request
+
+    }
+
+    package httpmethod {
+
+
+        interface HTTPMethod {
+            + generateResponse(request: Request): Optional<Response>
+        }
+
+        class GetMethod {
+            + GetMethod(resourceSearcher: ResourceSearcher)
+        }
+
+        class HeadMethod {
+            + HeadMethod(resourceSearcher: ResourceSearcher)
+        }
+
+
+        ControllerComponentFactory ..> HTTPMethod
+        DefaultController o-left- HTTPMethod
+
+        HTTPMethod <|.. GetMethod
+        HTTPMethod <|.. HeadMethod
+
+
+
+        }
+
+    package resource {
+
+        interface ResourceSearcher {
+            + findResource(resourceFile: String) : Optional<Resource>
+        }
+
+        class DirectoryResourceSearcher {
+            - mimeTypesMapping: Map<String, String>
+            - resourcesDirectory: File
+            + DirectoryResourceSearcher(resourceFactory: ResourceFactory, mimeTypesMapping: File, resourcesDirectory File)
+            - identifyMime(resourceFile: File): String
+            - getResourceSize(resourceFile: File): Long
+            - getResourceName(resourceFile: File): String
+            - getResourceLastModified(resourceFile: File): String
+            - getResourceBytes(resourceFile: File): InputStream
+            - getFileExtesion(resourceFile: File): String
+        }
+
+        class Resource {
+            - fileName: String
+            - mimeType: String
+            - bytesSize: Long
+            - lastModified: String
+            - bytes: InputStream
+            + Resource(fileName: String, mimeType: String, bytesSize: Long, lastModified: String, resourceBytes: InputStream)
+            + getMimeType(): String
+            + getLastModified(): String
+            + getBytesSize(): Long
+            + getBytes(): InputStream
+
+        }
+
+        interface ResourceFactory {
+            + resource(fileName: String, mimeType: String, bytesSize: Long, lastModified: String, bytes: InputStream): Resource
+        }
+
+        class DefaultResourceFactory {
+            + DefaultResourceFactory()
+
+        }
+
+        GetMethod --> ResourceSearcher
+        HeadMethod --> ResourceSearcher
+
+        ResourceSearcher <|.. DirectoryResourceSearcher
+        DirectoryResourceSearcher --> ResourceFactory
+
+        ResourceFactory <|.. DefaultResourceFactory
+        DefaultResourceFactory .left.> Resource
+
+        ControllerComponentFactory ..> DirectoryResourceSearcher
+        ControllerComponentFactory ..> DefaultResourceFactory
+
+    }
+
+    package response {
+
+        class ErrorResponseFactory {
+            - {static} ERROR_RESPONSE: String
+            + {static} generateErrorResponse(ResponseStatus: responseStatus): Response
+            - {static} generateHeaders(): Map<String, String>
+            - {static} getErrorResourceBytes(): InputStream
+
+
+        }
+
+
+        interface Response {
+            + getResponseStatus(): ResponseStatus
+            + getProtocolVersion(): String
+            + getHeaderValue(headerKey: String) String
+            + getResourceBytes(): InputStream
+            + toString(): String
+        }
+
+
+        class DefaultResponse {
+            - protocolVersion: String
+            - headers: Map<String, String>
+            - resourceBytes: InputStream
+
+            + DefaultResponse(reponseStatus: ResponseStatus,protocolVersion: String, headers: Map<String, String>, resourceBytes: InputStream)
+        }
+
+            class ResponseFactory {
+            + {static} response(responseStatus: ResponseStatus, protocolVersion:String, headers: Map<String, String>, resourceBytes: InputStream): Response
+
+        }
+
+        enum ResponseStatus {
+            + OK(200, "OK")
+            + NOT_IMPLEMENTED(501, "Not Implemented)
+            + NOT_FOUND(404, "Not Found")
+            + INTERNAL_SERVER_ERROR(500, "Internal Server Error")
+
+            - message: String
+            - code: Int
+
+            + ResponseStatus(message: String, code: Int)
+
+
+            + getMessage(): String
+            + getCode(): Int
+            + toString(): String
+
+        }
+
+        ErrorResponseFactory .up.> ResponseFactory
+        ErrorResponseFactory ..> ResponseStatus
+
+        DefaultController ..> ErrorResponseFactory
+        GetMethod ..> ErrorResponseFactory
+        HeadMethod ..> ErrorResponseFactory
+
+        GetMethod ..> ResponseFactory
+        HeadMethod ..> ResponseFactory
+        ResponseFactory ..> Resource
+
+        GetMethod ..> Response
+        HeadMethod ..> Response
+        DefaultController ..> Response
+
+        Response <|.. DefaultResponse
+
+        ResponseFactory ..> DefaultResponse
+
+        DefaultResponse --> ResponseStatus
+
+    }
+}
+
+@enduml
